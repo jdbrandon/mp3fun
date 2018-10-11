@@ -2,27 +2,10 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <mp3fun.h>
 #include <mp3fun_util.h>
 
 #define SIZE 20
-
-typedef struct{
-    unsigned sync:11;
-    unsigned mpeg_version:2;
-    unsigned layer:2;
-    unsigned crc_enabled:1;
-    
-    unsigned bitrate:4;
-    unsigned sample_frequency:2;
-    unsigned padding:1;
-    unsigned private_bit:1;
-    
-    unsigned channel:2;
-    unsigned mode_ext:2;
-    unsigned copyright:1;
-    unsigned original:1;
-    unsigned emphasis:2;
-} frame_header_t;
 
 int seek_to_sync(FILE* f){
     size_t read = 0, buf_size = 1000;
@@ -84,19 +67,35 @@ int seek_to_sync(FILE* f){
 }
 
 void dump_frame_header_to_file(const frame_header_t h, FILE* out){
-    fprintf(out, "%s:\t\t\t0x%.3x\n", "sync", h.sync);
-    fprintf(out, "%s:\t\t0x%.1x\n", "mpeg version", h.mpeg_version);
-    fprintf(out, "%s:\t\t\t0x%.1x\n", "layer", h.layer);
-    fprintf(out, "%s:\t\t0x%.1x\n", "crc enabled", h.crc_enabled);
-    fprintf(out, "%s:\t\t0x%.1x\n", "bitrate", h.bitrate);
-    fprintf(out, "%s:\t0x%.1x\n", "sample frequency", h.sample_frequency);
-    fprintf(out, "%s:\t\t0x%.1x\n", "padding", h.padding);
-    fprintf(out, "%s:\t\t0x%.1x\n", "private", h.private_bit);
-    fprintf(out, "%s:\t\t0x%.1x\n", "channel", h.channel);
-    fprintf(out, "%s:\t\t\t0x%.1x\n", "mode", h.mode_ext);
-    fprintf(out, "%s:\t\t0x%.1x\n", "copyright", h.copyright);
-    fprintf(out, "%s:\t\t0x%.1x\n", "original", h.original);
-    fprintf(out, "%s:\t\t0x%.1x\n", "emphasis", h.emphasis);
+    fprintf(out,"========= Begin Header ========\n");
+    //TODO: add verbosity check
+    //fprintf(out, "%s:\t\t\t0x%.3x\n", "sync", h.sync);
+    fprintf(out, "%s:\t\t%s\n", "mpeg version", \
+        get_mpeg_version_string(h.mpeg_version));
+    fprintf(out, "%s:\t\t\t%.1d\n", "layer", \
+        get_layer(h.layer));
+    fprintf(out, "%s:\t\t%s\n", "crc enabled", \
+        h.crc_disabled ? "false" : "true");
+    fprintf(out, "%s:\t\t%hu\n", "bitrate", \
+        get_bitrate(h.mpeg_version, h.layer, h.bitrate));
+    fprintf(out, "%s:\t%s\n", "sample frequency", \
+        get_sample_frequency_string(h.mpeg_version, h.sample_frequency));
+    fprintf(out, "%s:\t\t%s\n", "padding", \
+        h.is_padded ? "true" : "false");
+    //TODO add verbosity check
+    //fprintf(out, "%s:\t\t%.1d\n", "private", h.private);
+    fprintf(out, "%s:\t\t%s\n", "channel", \
+        get_channel_mode_string(h.channel_mode));
+    if(h.channel_mode == JOINT_STEREO)
+        fprintf(out, "%s:\t\t\t%s\n", "mode extension", \
+            get_mode_ext_string(h.layer, h.mode_ext));
+    fprintf(out, "%s:\t\t%s\n", "copyright", \
+        h.has_copyright ? "true" : "false");
+    fprintf(out, "%s:\t\t%s\n", "original", \
+        h.is_original ? "true" : "false");
+    fprintf(out, "%s:\t\t%s\n", "emphasis", \
+        get_emphasis_string(h.emphasis));
+    fprintf(out,"========= End Header ==========\n");
 }
 
 void dump_frame_header(const frame_header_t h){
@@ -129,26 +128,19 @@ int main(int argc, char** argv){
         return -1;
     }
 
-    fread(&frame_ref, 1, sizeof(frame_header_t), f);
+    while((read = fread(&frame_ref, 1, sizeof(frame_header_t), f)) ==  \
+            sizeof(frame_header_t)){
+        if(is_frame_valid(frame_ref)){
+            dump_frame_header(frame_ref);
+        } else {
+            //TODO add verbosity check here
+            //fprintf(stderr, "invalid frame, seeking next match\n");
+            fseek(f, -sizeof(frame_header_t) + 1, SEEK_CUR);
+        }
+        if(!seek_to_sync(f))
+            break;
+    }
     
-    if(frame_ref.sync != 0x7ff){
-        fprintf(stderr, "frame_ref is out of sync\n");
-        return -1;
-    }
-
-    dump_frame_header(frame_ref);
-
-/*
-    while((read = fread(buf, 1, SIZE, f)) == SIZE){
-        walker = (unsigned*) &buf[0];
-        for(count = 0; count < (SIZE>>2); count++)
-            printf("0x%.8x\t", walker[count]);
-        printf("\n");
-    }
-    for(count = 0; count < read; count++){
-        printf("%d ", buf[count]);    
-    }
-*/
     printf("\n");
 
     fclose(f);

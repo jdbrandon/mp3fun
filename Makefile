@@ -9,6 +9,9 @@ LDFLAGS =
 
 all: $(TARG)
 
+debug: CFLAGS += -DDEBUG -g
+debug: $(TARG)
+
 $(TARG): $(OBJ)
 	$(CC) -o $@ $^ $(LDFLAGS)
 
