@@ -1,5 +1,10 @@
 #ifndef MP3UTIL_HEADER
 #define MP3UTIL_HEADER
+#include<stdio.h>
+
+extern unsigned verbose;
+extern FILE* outFile;
+extern FILE* errFile;
 
 void print_usage(void);
 int is_frame_valid(const frame_header_t frame);

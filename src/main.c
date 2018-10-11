@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <unistd.h>
+#include <string.h>
 #include <errno.h>
 #include <mp3fun.h>
 #include <mp3fun_util.h>
-
-#define SIZE 20
 
 int seek_to_sync(FILE* f){
     size_t read = 0, buf_size = 1000;
@@ -68,8 +68,8 @@ int seek_to_sync(FILE* f){
 
 void dump_frame_header_to_file(const frame_header_t h, FILE* out){
     fprintf(out,"========= Begin Header ========\n");
-    //TODO: add verbosity check
-    //fprintf(out, "%s:\t\t\t0x%.3x\n", "sync", h.sync);
+    if(verbose >= 2)
+        fprintf(out, "%s:\t\t\t0x%.3x\n", "sync", h.sync);
     fprintf(out, "%s:\t\t%s\n", "mpeg version", \
         get_mpeg_version_string(h.mpeg_version));
     fprintf(out, "%s:\t\t\t%.1d\n", "layer", \
@@ -82,8 +82,8 @@ void dump_frame_header_to_file(const frame_header_t h, FILE* out){
         get_sample_frequency_string(h.mpeg_version, h.sample_frequency));
     fprintf(out, "%s:\t\t%s\n", "padding", \
         h.is_padded ? "true" : "false");
-    //TODO add verbosity check
-    //fprintf(out, "%s:\t\t%.1d\n", "private", h.private);
+    if(verbose >= 2)
+        fprintf(out, "%s:\t\t%.1d\n", "private", h.private);
     fprintf(out, "%s:\t\t%s\n", "channel", \
         get_channel_mode_string(h.channel_mode));
     if(h.channel_mode == JOINT_STEREO)
@@ -99,32 +99,83 @@ void dump_frame_header_to_file(const frame_header_t h, FILE* out){
 }
 
 void dump_frame_header(const frame_header_t h){
-    dump_frame_header_to_file(h, stdout);    
+    dump_frame_header_to_file(h, outFile);    
 }
 
 int main(int argc, char** argv){
     FILE* f;
-    size_t read, count;
-    unsigned* walker;
-    char buf[SIZE];
-    int success = false;
+    size_t read;
+    char file_name[300], out_file_name[300], err_file_name[300];
+    int success = false, option;
     frame_header_t frame_ref;
+    file_name[0] = out_file_name[0] = err_file_name[0] = '\0';
 
     if(argc < 2){
         print_usage();
         return -1;
     }
-    f = fopen(argv[1], "r");
+
+    while((option = getopt(argc, argv, "vi:o:e:")) != -1){
+        switch(option){
+        case 'i':
+            strncpy(file_name, optarg, 299);
+            file_name[299] = '\0';
+            break;
+        case 'o':
+            strncpy(out_file_name, optarg, 299);
+            out_file_name[299]= '\0';
+            break;
+        case 'e':
+            strncpy(err_file_name, optarg, 299);
+            err_file_name[299]= '\0';
+            break;
+        case 'v':
+            verbose++;
+            break;
+        default:
+            fprintf(stderr, "invalid option -%c\n", (char) option);
+            print_usage();
+            return -1;
+        }
+    }
+
+    if(file_name[0] == '\0'){
+        fprintf(stderr, "Error: no input file specified. Specify with -i\n");
+        return -1;
+    }
+
+    f = fopen(file_name, "r");
 
     if(f == NULL){
         fprintf(stderr, "Failed to open %s. errno:%d \n", argv[1], errno);
         return -1;
     }
+
+    if(out_file_name[0] != '\0'){
+        outFile = fopen(out_file_name, "w+");
+        if(outFile == NULL){
+            fprintf(stderr, "Error: unable to open %s for writing\n", \
+            out_file_name);
+            fprintf(stderr, "\tOutput will be sent to stdout\n");
+            outFile = stdout;
+        }
+    } else outFile = stdout;
+
+    if(err_file_name[0] != '\0'){
+        errFile = fopen(err_file_name, "w+");
+        if(errFile == NULL){
+            fprintf(stderr, "Error: unable to open %s for writing\n", \
+            err_file_name);
+            fprintf(stderr, "\tErrors will be sent to stderr\n");
+            errFile = stderr;
+        }
+    } else errFile = stderr;
+
     //Seek to frame sync pattern
     success = seek_to_sync(f);
     
     if(!success){
-        fprintf(stderr, "unable to locate sync\n");
+        fprintf(errFile, "unable to locate sync\n");
         return -1;
     }
 
@@ -133,16 +184,18 @@ int main(int argc, char** argv){
         if(is_frame_valid(frame_ref)){
             dump_frame_header(frame_ref);
         } else {
-            //TODO add verbosity check here
-            //fprintf(stderr, "invalid frame, seeking next match\n");
+            if(verbose >= 1)
+                fprintf(errFile, "invalid frame, seeking next match\n");
             fseek(f, -sizeof(frame_header_t) + 1, SEEK_CUR);
         }
         if(!seek_to_sync(f))
             break;
     }
     
-    printf("\n");
+    fprintf(outFile, "\n");
 
     fclose(f);
+    fclose(outFile);
+    fclose(errFile);
     return 0;
 }

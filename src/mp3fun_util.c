@@ -23,6 +23,10 @@ const unsigned char bitrate_table[BR_TABLE_ROW][BR_TABLE_COL] = {
     { BRBA>>1,  BRBA>>1,  BRBA>>1,  BRBA>>1,  BRBA>>1}
 };
 
+unsigned verbose = 0;
+FILE* outFile = NULL;
+FILE* errFile = NULL;
+
 void print_usage(){
     printf("mp3fun usage:\n\t");
     printf("./mp3fun <file-name>\n");
