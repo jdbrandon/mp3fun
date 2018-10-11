@@ -29,7 +29,7 @@ FILE* errFile = NULL;
 
 void print_usage(){
     printf("mp3fun usage:\n\t");
-    printf("./mp3fun <file-name>\n");
+    printf("\t./mp3fun [-v] -i input_file [-o output_file] [-e error_file]\n");
 }
 
 int is_frame_valid(const frame_header_t frame){
