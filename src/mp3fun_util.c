@@ -1,8 +1,5 @@
-#include <stdlib.h>
-#include <stdio.h>
 #include <mp3fun.h>
 #include <mp3fun_util.h>
-#include <stdbool.h>
 
 const unsigned char bitrate_table[BR_TABLE_ROW][BR_TABLE_COL] = {
     {    BRFR,     BRFR,     BRFR,     BRFR,     BRFR},
@@ -27,14 +24,32 @@ unsigned verbose = 0;
 FILE* outFile = NULL;
 FILE* errFile = NULL;
 
+void error(char* fmt, ...){
+    va_list args;
+    va_start(args, fmt);
+    if(errFile)
+        vfprintf(errFile, fmt, args);
+    else vfprintf(stderr, fmt, args);
+    va_end(args);
+}
+
+void output(char* fmt, ...){
+    va_list args;
+    va_start(args, fmt);
+    if(outFile)
+        vfprintf(outFile, fmt, args);
+    else vprintf(fmt, args);
+    va_end(args);
+}
+
 void print_usage(){
     printf("mp3fun usage:\n\t");
-    printf("\t./mp3fun [-v] -i input_file [-o output_file] [-e error_file]\n");
+    printf("./mp3fun [-v] -i input_file [-o output_file] [-e error_file]\n");
 }
 
 int is_frame_valid(const frame_header_t frame){
     unsigned version = frame.mpeg_version;
-    if(version == MPEG_RESERVED)
+    if(version == MPEG_RESERVED || version == MPEG2_5)
         return false;
 
     unsigned layer = frame.layer;
@@ -49,6 +64,13 @@ int is_frame_valid(const frame_header_t frame){
     unsigned freq = frame.sample_frequency;
     if(freq == FREQ_RESERVED)
         return false;
+
+    freq = get_sample_frequency(version, freq);
+
+    if(freq == ERR_BAD_FREQ || freq == ERR_BAD_MPEG_VERSION){
+        error("layer and version test pass but freq fails\n");
+        return false;
+    }
 
     unsigned emph = frame.emphasis;
     if(emph == EMPHASIS_RESERVED)
@@ -108,7 +130,7 @@ char* get_mpeg_version_string(unsigned mpeg_version){
         res = "Reserved for future use";
         break;
     default:
-        res = "Error: unknown MPEG version";
+        res = "Error: impossible MPEG version";
     }
     return res;
 }
@@ -162,40 +184,38 @@ get_bitrate(unsigned version, unsigned layer, unsigned bitrate_idx){
     return res;
 }
 
-char* get_sample_frequency_string(unsigned version, unsigned freq){
-    char* res;
-    char* bad_freq = "Error: bad frequency";
-    char* bad_version = "Error: bad MPEG Version";
+unsigned get_sample_frequency(unsigned version, unsigned freq){
+    unsigned res;
     switch(version){
     case MPEG1:
         if(freq == FREQ_MPEG1_44KHZ)
-            res = "44100 Hz";
+            res = 44100;
         else if(freq == FREQ_MPEG1_48KHZ)
-            res = "48000 Hz";
+            res = 48000;
         else if(freq == FREQ_MPEG1_32KHZ)
-            res = "32000 Hz";
-        else res = bad_freq;
+            res = 32000;
+        else res = ERR_BAD_FREQ;
         break;
     case MPEG2:
         if(freq == FREQ_MPEG2_22KHZ)
-            res = "22050 Hz";
+            res = 22050;
         else if(freq == FREQ_MPEG2_24KHZ)
-            res = "24000 Hz";
+            res = 24000;
         else if(freq == FREQ_MPEG2_16KHZ)
-            res = "16000 Hz";
-        else res = bad_freq;
+            res = 16000;
+        else res = ERR_BAD_FREQ;
         break;
     case MPEG2_5:
         if(freq == FREQ_MPEG2_5_11KHZ)
-            res = "11025 Hz";
+            res = 11025;
         else if(freq == FREQ_MPEG2_5_12KHZ)
-            res = "12000 Hz";
+            res = 12000;
         else if(freq == FREQ_MPEG2_5_8KHZ)
-            res = "8000 Hz";
-        else res = bad_freq;
+            res = 8000;
+        else res = ERR_BAD_FREQ;
         break;
     default:
-        res = bad_version;
+        res = ERR_BAD_MPEG_VERSION;
     }
     return res;
 }
@@ -225,7 +245,7 @@ char* get_channel_mode_string(unsigned mode){
 
 char* get_mode_ext_string(unsigned layer, unsigned ext){
     char* res;
-    char* bad_ext = "Impossible ext";
+    char* bad_ext = "Impossible mode ext";
     switch(layer){
     case LAYER_I:
     case LAYER_II:
@@ -274,5 +294,24 @@ char* get_emphasis_string(unsigned emph){
     default:
         res = "Error: bad emphasis";
     }
+    return res;
+}
+
+size_t calculate_frame_size(frame_header_t frame){
+
+    unsigned frequency = get_sample_frequency(frame.mpeg_version,
+                                                frame.sample_frequency);
+    unsigned bitrate = get_bitrate(frame.mpeg_version,
+                                            frame.layer,
+                                            frame.bitrate);
+
+    size_t res = (size_t)(144000 * ((float)bitrate / frequency));
+    if(frame.mpeg_version == MPEG2_5)
+        res >>= 1; //low bitrate mode
+    size_t padding = (frame.layer == LAYER_I) ? PADDING_LAYER_I :
+                                                PADDING_LAYER_II; //same as layer 3
+            
+    if(frame.is_padded)
+        res += padding;
     return res;
 }

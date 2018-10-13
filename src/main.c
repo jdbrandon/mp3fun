@@ -1,27 +1,28 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
 #include <mp3fun.h>
 #include <mp3fun_util.h>
+#include <processor.h>
 
 int seek_to_sync(FILE* f){
     size_t read = 0, buf_size = 1000;
+    int bytes_read = 0;
     char buf[buf_size];
     int i = 0;
     frame_header_t* header;
 
     while((read = fread(buf, 1, buf_size, f)) == buf_size){
+        //maintain bytes_read
+        bytes_read += read;
         //Search for the pattern
         for(i=0; i < read-2; i++){
             header = (frame_header_t*) &buf[i];
-            header->sync &= 0x7ff;
-            if(header->sync == 0x7ff){
+            if(header->sync == SYNC_VAL){
                 //found!! sync seek back f to i    
                 fseek(f, -buf_size + i, SEEK_CUR);
-                return true;
+                bytes_read += (-buf_size + i);
+                return bytes_read;
             }
             if(header->sync & 0x00f < 0x00f){
                 //next step and the one after won't pass either
@@ -35,22 +36,28 @@ int seek_to_sync(FILE* f){
         }//end for
         if(i == buf_size-2){
             //need to check last 2 bytes of buf
-            if((buf[buf_size-1] & buf[buf_size-2]) == 0xff)
+            if((buf[buf_size-1] & buf[buf_size-2]) == 0xff){
                 fseek(f, -2, SEEK_CUR);
+                bytes_read -= 2;
+            }
         }
         if(i == buf_size-1){
-            if(buf[buf_size-1] == 0xff)
+            if(buf[buf_size-1] == 0xff){
                 fseek(f, -1, SEEK_CUR);
+                bytes_read--;
+            }
         }
     }//end while
+    bytes_read =+ read;
     i = 0;
     while(read-i >= sizeof(frame_header_t)){
         header = (frame_header_t*) &buf[i];
-        header->sync &= 0x7ff;
-        if(header->sync == 0x7ff){
+        header->sync &= SYNC_VAL;
+        if(header->sync == SYNC_VAL){
             //found!! sync seek back f to i    
             fseek(f, -buf_size + i, SEEK_CUR);
-            return true;
+            bytes_read += (-buf_size + i);
+            return bytes_read;
         }
         if(header->sync & 0x00f < 0x00f){
             //next step and the one after won't pass either
@@ -63,7 +70,28 @@ int seek_to_sync(FILE* f){
         }
         i++; 
     }//end while
-    return false;
+    return ERR_NO_HEADER;
+}
+
+int seek_to_valid_sync(FILE* f, frame_header_t* out_frame){
+    int bytes_read = 0;
+    size_t read;
+
+    while((read = seek_to_sync(f)) != ERR_NO_HEADER){
+        bytes_read += read;
+        read = fread(out_frame, 1, sizeof(frame_header_t), f);
+        if(read < sizeof(frame_header_t)){
+            error("Short read on frame header\n");
+            return ERR_SHORT_READ;
+        }
+        bytes_read += read;
+        if(is_frame_valid(*out_frame))
+            return bytes_read;
+        if(verbose >= 2)
+            error("invalid frame, seeking next match\n");
+        fseek(f, -sizeof(frame_header_t) + 1, SEEK_CUR);
+    }
+    return ERR_NO_HEADER;
 }
 
 void dump_frame_header_to_file(const frame_header_t h, FILE* out){
@@ -78,8 +106,8 @@ void dump_frame_header_to_file(const frame_header_t h, FILE* out){
         h.crc_disabled ? "false" : "true");
     fprintf(out, "%s:\t\t%hu\n", "bitrate", \
         get_bitrate(h.mpeg_version, h.layer, h.bitrate));
-    fprintf(out, "%s:\t%s\n", "sample frequency", \
-        get_sample_frequency_string(h.mpeg_version, h.sample_frequency));
+    fprintf(out, "%s:\t%u Hz\n", "sample frequency", \
+        get_sample_frequency(h.mpeg_version, h.sample_frequency));
     fprintf(out, "%s:\t\t%s\n", "padding", \
         h.is_padded ? "true" : "false");
     if(verbose >= 2)
@@ -87,7 +115,7 @@ void dump_frame_header_to_file(const frame_header_t h, FILE* out){
     fprintf(out, "%s:\t\t%s\n", "channel", \
         get_channel_mode_string(h.channel_mode));
     if(h.channel_mode == JOINT_STEREO)
-        fprintf(out, "%s:\t\t\t%s\n", "mode extension", \
+        fprintf(out, "\t%s:\t%s\n", "mode extension", \
             get_mode_ext_string(h.layer, h.mode_ext));
     fprintf(out, "%s:\t\t%s\n", "copyright", \
         h.has_copyright ? "true" : "false");
@@ -102,11 +130,21 @@ void dump_frame_header(const frame_header_t h){
     dump_frame_header_to_file(h, outFile);    
 }
 
+long get_bytes_to_EOF(FILE* f){
+    long current = ftell(f);
+    fseek(f, 0, SEEK_END);
+    long end = ftell(f);
+    fseek(f, current, SEEK_SET); //undo side effect
+    return end-current;
+}
+
 int main(int argc, char** argv){
     FILE* f;
-    size_t read;
+    size_t read, frame_size;
     char file_name[300], out_file_name[300], err_file_name[300];
-    int success = false, option;
+    char* frame_buf = NULL;
+    int offset, option;
+    unsigned short crc;
     frame_header_t frame_ref;
     file_name[0] = out_file_name[0] = err_file_name[0] = '\0';
 
@@ -133,14 +171,14 @@ int main(int argc, char** argv){
             verbose++;
             break;
         default:
-            fprintf(stderr, "invalid option -%c\n", (char) option);
+            error("invalid option -%c\n", (char) option);
             print_usage();
             return -1;
         }
     }
 
     if(file_name[0] == '\0'){
-        fprintf(stderr, "Error: no input file specified. Specify with -i\n");
+        error("Error: no input file specified. Specify with -i\n");
         return -1;
     }
 
@@ -154,9 +192,9 @@ int main(int argc, char** argv){
     if(out_file_name[0] != '\0'){
         outFile = fopen(out_file_name, "w+");
         if(outFile == NULL){
-            fprintf(stderr, "Error: unable to open %s for writing\n", \
-            out_file_name);
-            fprintf(stderr, "\tOutput will be sent to stdout\n");
+            error("Error: unable to open %s for writing\n", \
+                    out_file_name);
+            error("\tOutput will be sent to stdout\n");
             outFile = stdout;
         }
     } else outFile = stdout;
@@ -164,35 +202,68 @@ int main(int argc, char** argv){
     if(err_file_name[0] != '\0'){
         errFile = fopen(err_file_name, "w+");
         if(errFile == NULL){
-            fprintf(stderr, "Error: unable to open %s for writing\n", \
-            err_file_name);
-            fprintf(stderr, "\tErrors will be sent to stderr\n");
+            error("Error: unable to open %s for writing\n", \
+                    err_file_name);
+            error("\tErrors will be sent to stderr\n");
             errFile = stderr;
         }
     } else errFile = stderr;
 
-    //Seek to frame sync pattern
-    success = seek_to_sync(f);
-    
-    if(!success){
-        fprintf(errFile, "unable to locate sync\n");
-        return -1;
-    }
+    //main loop
+    while((offset = seek_to_valid_sync(f, &frame_ref)) >= 0){
 
-    while((read = fread(&frame_ref, 1, sizeof(frame_header_t), f)) ==  \
-            sizeof(frame_header_t)){
-        if(is_frame_valid(frame_ref)){
+        if(verbose > 0)
             dump_frame_header(frame_ref);
-        } else {
-            if(verbose >= 1)
-                fprintf(errFile, "invalid frame, seeking next match\n");
-            fseek(f, -sizeof(frame_header_t) + 1, SEEK_CUR);
+
+        if( !frame_ref.crc_disabled ){
+            read = fread(&crc, 1, sizeof(short), f);
+            if(read < sizeof(short)){
+                error("Error: short read on crc\n");
+                dump_frame_header_to_file(frame_ref, errFile);
+                break;
+            }
+            if(verbose > 0)
+                output("Frame crc:\t0x%.4x\n", crc);
         }
-        if(!seek_to_sync(f))
+
+        frame_size = calculate_frame_size(frame_ref);
+
+        if(frame_size == 0 && frame_ref.bitrate == BITRATE_FREE){
+            //NOTE: normally we need to use get_bitrate() but 
+            //this is a special case thanks to (0 == BITRATE_FREE)
+
+            //Determine frame size by locating next valid frame
+            //and taking the offset
+            frame_header_t tmp_frame;
+            frame_size = seek_to_valid_sync(f, &tmp_frame);
+            if(frame_size == ERR_NO_HEADER || 
+                frame_size == ERR_SHORT_READ){
+                //assume frame spans to end of file    
+                frame_size = get_bytes_to_EOF(f);
+            } else fseek(f, -frame_size, SEEK_CUR);
+        }
+
+        if(verbose > 0)
+            output("frame size: %lu\n", frame_size);
+
+        frame_buf = malloc(frame_size);
+        read = fread(frame_buf, 1, frame_size, f);
+
+        if(read < frame_size){
+            error("Error: short read on frame\n");
+            dump_frame_header_to_file(frame_ref, errFile);
+            free(frame_buf);
             break;
+        }
+
+        process_raw(frame_ref , frame_buf, frame_size);
+
+        free(frame_buf);
     }
+    if(offset == ERR_SHORT_READ)
+        error("Short read while seeking header\n");
     
-    fprintf(outFile, "\n");
+    output("\n");
 
     fclose(f);
     fclose(outFile);

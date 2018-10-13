@@ -4,8 +4,17 @@
 #ifndef MP3FUN_HEADER
 #define MP3FUN_HEADER
 
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
+
 #define ERR_BAD_MPEG_VERSION    (-1)
 #define ERR_BAD_LAYER           (-2)
+#define ERR_BAD_FREQ            (-3)
+#define ERR_NO_HEADER           (-4)
+#define ERR_SHORT_READ          (-5)
+
+#define SYNC_VAL 0x7ff
 
 #define MPEG2_5         0
 #define MPEG_RESERVED   1
@@ -45,9 +54,9 @@
 #define FREQ_MPEG2_5_8KHZ   2
 #define FREQ_RESERVED       3
 
-#define PADDING_LAYER_I     32
-#define PADDING_LAYER_II    8
-#define PADDING_LAYER_III   8
+#define PADDING_LAYER_I     4
+#define PADDING_LAYER_II    1
+#define PADDING_LAYER_III   1
 
 #define STEREO              0
 #define INTENSITY_STEREO    1
