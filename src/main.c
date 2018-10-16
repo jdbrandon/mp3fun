@@ -9,62 +9,57 @@ int seek_to_sync(FILE* f){
     size_t read = 0, buf_size = 1000;
     int bytes_read = 0;
     char buf[buf_size];
-    int i = 0;
-    frame_header_t* header;
+    int i, j, diff;
+    frame_header_t h;
 
     while((read = fread(buf, 1, buf_size, f)) == buf_size){
         //maintain bytes_read
         bytes_read += read;
         //Search for the pattern
-        for(i=0; i < read-2; i++){
-            header = (frame_header_t*) &buf[i];
-            if(header->sync == SYNC_VAL){
+        for(i = 0; i < read-3; i++){
+            read_header_bytes(buf, i, &h);
+            if(h.sync == SYNC_VAL){
                 //found!! sync seek back f to i    
                 fseek(f, -buf_size + i, SEEK_CUR);
                 bytes_read += (-buf_size + i);
                 return bytes_read;
             }
-            if(header->sync & 0x00f < 0x00f){
+            if((h.sync & 0x00f) < 0x00f){
                 //next step and the one after won't pass either
                 i += 2; //factors in increment of for loop
                 continue;
             }
-            if(header->sync & 0x0f0 < 0x0f0){
+            if((h.sync & 0x070) < 0x070){
                 //next step won't pass
                 i++; //factors in increment of for loop
             }
         }//end for
-        if(i == buf_size-2){
-            //need to check last 2 bytes of buf
-            if((buf[buf_size-1] & buf[buf_size-2]) == 0xff){
-                fseek(f, -2, SEEK_CUR);
-                bytes_read -= 2;
-            }
-        }
-        if(i == buf_size-1){
-            if(buf[buf_size-1] == 0xff){
-                fseek(f, -1, SEEK_CUR);
-                bytes_read--;
-            }
+
+        //test this with chosen input
+        //make sure we don't miss a header that spans
+        //buffer boundary
+        diff = buf_size - i;
+        if(diff){
+            fseek(f, -diff, SEEK_CUR);
+            bytes_read -= diff;
         }
     }//end while
-    bytes_read =+ read;
+    bytes_read += read;
     i = 0;
     while(read-i >= sizeof(frame_header_t)){
-        header = (frame_header_t*) &buf[i];
-        header->sync &= SYNC_VAL;
-        if(header->sync == SYNC_VAL){
+        read_header_bytes(buf, i, &h);
+        if(h.sync == SYNC_VAL){
             //found!! sync seek back f to i    
-            fseek(f, -buf_size + i, SEEK_CUR);
-            bytes_read += (-buf_size + i);
+            fseek(f, -read + i, SEEK_CUR);
+            bytes_read += (-read + i);
             return bytes_read;
         }
-        if(header->sync & 0x00f < 0x00f){
+        if((h.sync & 0x00f) < 0x00f){
             //next step and the one after won't pass either
             i += 3;
             continue;
         }
-        if(header->sync & 0x0f0 < 0x0f0){
+        if((h.sync & 0x070) < 0x070){
             //next step won't pass
             i++; //factors in increment of loop
         }
@@ -75,16 +70,18 @@ int seek_to_sync(FILE* f){
 
 int seek_to_valid_sync(FILE* f, frame_header_t* out_frame){
     int bytes_read = 0;
+    char buf[sizeof(frame_header_t)];
     size_t read;
 
     while((read = seek_to_sync(f)) != ERR_NO_HEADER){
         bytes_read += read;
-        read = fread(out_frame, 1, sizeof(frame_header_t), f);
+        read = fread(buf, 1, sizeof(frame_header_t), f);
         if(read < sizeof(frame_header_t)){
             error("Short read on frame header\n");
             return ERR_SHORT_READ;
         }
         bytes_read += read;
+        read_header_bytes(buf, 0, out_frame);
         if(is_frame_valid(*out_frame))
             return bytes_read;
         if(verbose >= 2)
@@ -182,7 +179,7 @@ int main(int argc, char** argv){
         return -1;
     }
 
-    f = fopen(file_name, "r");
+    f = fopen(file_name, "rb");
 
     if(f == NULL){
         fprintf(stderr, "Failed to open %s. errno:%d \n", argv[1], errno);
@@ -211,10 +208,10 @@ int main(int argc, char** argv){
 
     //main loop
     while((offset = seek_to_valid_sync(f, &frame_ref)) >= 0){
-
         if(verbose > 0)
             dump_frame_header(frame_ref);
 
+        crc = 0;
         if( !frame_ref.crc_disabled ){
             read = fread(&crc, 1, sizeof(short), f);
             if(read < sizeof(short)){
@@ -256,7 +253,7 @@ int main(int argc, char** argv){
             break;
         }
 
-        process_raw(frame_ref , frame_buf, frame_size);
+        process_raw(frame_ref, crc, frame_buf, frame_size);
 
         free(frame_buf);
     }
@@ -268,5 +265,6 @@ int main(int argc, char** argv){
     fclose(f);
     fclose(outFile);
     fclose(errFile);
+    close_output();
     return 0;
 }
