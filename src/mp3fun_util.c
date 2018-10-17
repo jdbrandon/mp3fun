@@ -1,5 +1,6 @@
 #include <mp3fun.h>
 #include <mp3fun_util.h>
+#include <libmpeg123/mpeghead.h>
 
 const unsigned char bitrate_table[BR_TABLE_ROW][BR_TABLE_COL] = {
     {    BRFR,     BRFR,     BRFR,     BRFR,     BRFR},
@@ -47,7 +48,86 @@ void print_usage(){
     printf("./mp3fun [-v] -i input_file [-o output_file] [-e error_file]\n");
 }
 
+void read_header_bytes(char* buf, int i, frame_header_t* frame){
+    test_t* t = (test_t*) frame;
+
+    for(int j = 0; j < sizeof(frame_header_t); j++)
+        t->bytes[j] = buf[i+3-j];
+}
+
+void write_header_bytes(frame_header_t frame, char* buf){
+    test_t* t = (test_t*) &frame;
+    for(int i = 0; i < sizeof(frame_header_t); i++){
+        buf[i] = t->bytes[3-i];    
+    }
+}
+
+bool test_equal(frame_header_t f, unsigned long h){
+    int res = true;
+    if(f.sync != HDR_SYNC_VAL(h)){
+        error("sync does not match\n");    
+        error("0x%.3x\t0x%.3x\n", f.sync, HDR_SYNC_VAL(h));
+        res = false;
+    }
+    if(f.mpeg_version != HDR_VERSION_VAL(h)){
+        error("version does not match\n");
+        res = false;
+    }
+    if(f.layer != HDR_LAYER_VAL(h)){
+        error("layer does not match\n");
+        res = false;
+    }
+    if(f.crc_disabled != HDR_CRC_VAL(h)){
+        error("crc bit does not match\n");
+        res = false;
+    }
+    if(f.bitrate != HDR_BITRATE_VAL(h)){
+        error("bitrate index does not match\n");
+        res = false;
+    }
+    if(f.sample_frequency != HDR_SAMPLERATE_VAL(h)){
+        error("sample frequency does not match\n");
+        res = false;
+    }
+    if(f.is_padded != HDR_PADDING_VAL(h)){
+        error("padding enable bit does not mathc\n");
+        res = false;
+    }
+    if(f.private != HDR_PRIVATE_VAL(h)){
+        error("private bit doesn not match\n");
+        res = false;
+    }
+    if(f.channel_mode != HDR_CHANNEL_VAL(h)){
+        error("channel mode does not match\n");
+        res = false;
+    }
+    if(f.mode_ext != HDR_CHANEX_VAL(h)){
+        error("channel extension does not match\n");
+        res = false;
+    }
+    if(f.has_copyright != HDR_COPYRIGHT_VAL(h)){
+        error("copyright bit does not match\n");
+        res = false;
+    }
+    if(f.is_original != HDR_ORIGINAL_VAL(h)){
+        error("original bit does not match\n");
+        res = false;
+    }
+    if(f.emphasis != HDR_EMPHASIS_VAL(h)){
+        error("emphasis does not match\n");
+        res = false;
+    }
+    return res;
+}
+
 int is_frame_valid(const frame_header_t frame){
+    bool res;
+    res = test_equal(frame, *((long *) &frame));
+    if(!res){
+        error("my parse != libmpeg123");
+        return false;
+    }
+
     unsigned version = frame.mpeg_version;
     if(version == MPEG_RESERVED || version == MPEG2_5)
         return false;
@@ -297,6 +377,60 @@ char* get_emphasis_string(unsigned emph){
     return res;
 }
 
+unsigned short get_samples_per_frame(unsigned version, unsigned layer){
+    unsigned short res;
+    if(version == MPEG1){
+        switch(layer){
+        case LAYER_I:
+            res = 381;
+            break;
+        case LAYER_II:
+        case LAYER_III:
+            res = 1152;
+            break;
+        default:
+            res = ERR_BAD_LAYER;
+        }
+    } else if((version == MPEG2) || (version == MPEG2_5)){
+        switch(layer){
+        case LAYER_I:
+            res = 384;
+            break;
+        case LAYER_II:
+            res = 1152;
+            break;
+        case LAYER_III:
+            res = 576;
+            break;
+        default:
+            res = ERR_BAD_LAYER;
+        }
+    } else {
+        res = ERR_BAD_MPEG_VERSION;
+    }
+    return res;
+}
+
+int get_slot_size(unsigned layer){
+    int res;
+    switch(layer){
+    case LAYER_I:
+        res = 4;
+        break;
+    case LAYER_II:
+    case LAYER_III:
+        res = 1;
+        break;
+    default:
+        res = ERR_BAD_LAYER;
+    }
+    return res;
+}
+
+/*
+Frame should be validated before this function is 
+ever called so we skip validity checks on frame here
+*/
 size_t calculate_frame_size(frame_header_t frame){
 
     unsigned frequency = get_sample_frequency(frame.mpeg_version,
@@ -304,14 +438,15 @@ size_t calculate_frame_size(frame_header_t frame){
     unsigned bitrate = get_bitrate(frame.mpeg_version,
                                             frame.layer,
                                             frame.bitrate);
+    bitrate *= 1000;
+    unsigned short samples = get_samples_per_frame(frame.mpeg_version, frame.layer);
 
-    size_t res = (size_t)(144000 * ((float)bitrate / frequency));
-    if(frame.mpeg_version == MPEG2_5)
-        res >>= 1; //low bitrate mode
-    size_t padding = (frame.layer == LAYER_I) ? PADDING_LAYER_I :
-                                                PADDING_LAYER_II; //same as layer 3
-            
-    if(frame.is_padded)
-        res += padding;
-    return res;
+    int slot = get_slot_size(frame.layer);
+
+    //Ref: https://hydrogenaud.io/index.php/topic,85125.0.html
+    float bps = ((float)samples)/8.0;
+    float size = bps * ((float)bitrate);
+    size /= ((float)frequency);
+    size += (frame.is_padded? slot : 0);
+    return (size_t) size;
 }

@@ -13,6 +13,7 @@
 #define ERR_BAD_FREQ            (-3)
 #define ERR_NO_HEADER           (-4)
 #define ERR_SHORT_READ          (-5)
+#define ERR_BAD_HEADER          (-6)
 
 #define SYNC_VAL 0x7ff
 
@@ -79,6 +80,7 @@
 extern const unsigned char bitrate_table[][BR_TABLE_COL];
 
 typedef struct{
+#if __BYTE_ORDER == __BIG_ENDIAN
     unsigned sync:11;
     unsigned mpeg_version:2;
     unsigned layer:2;
@@ -94,6 +96,25 @@ typedef struct{
     unsigned has_copyright:1;
     unsigned is_original:1;
     unsigned emphasis:2;
+#elif __BYTE_ORDER == __LITTLE_ENDIAN
+    unsigned emphasis:2;
+    unsigned is_original:1;
+    unsigned has_copyright:1;
+    unsigned mode_ext:2;
+    unsigned channel_mode:2;
+    unsigned private:1;
+    unsigned is_padded:1;
+    unsigned sample_frequency:2;
+    unsigned bitrate:4;
+    unsigned crc_disabled:1;
+    unsigned layer:2;
+    unsigned mpeg_version:2;
+    unsigned sync:11;
+#endif
 } frame_header_t;
 
+typedef union {
+    frame_header_t frame;
+    char bytes[4];
+} test_t;
 #endif

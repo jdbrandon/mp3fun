@@ -11,6 +11,8 @@ extern FILE* errFile;
 void error(char* fmt, ...);
 void output(char* fmt, ...);
 void print_usage(void);
+void read_header_bytes(char* buf, int i, frame_header_t* frame);
+void write_header_bytes(frame_header_t frame, char* buf);
 int is_frame_valid(const frame_header_t frame);
 int is_mode_and_l2_bitrate_valid(unsigned mode, unsigned l2_bitrate);
 char* get_mpeg_version_string(unsigned mpeg_version);

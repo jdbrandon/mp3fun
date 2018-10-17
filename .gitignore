@@ -4,3 +4,5 @@ mp3fun
 *.o
 *.txt
 *.swp
+*.mp3
+debug

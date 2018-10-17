@@ -18,3 +18,7 @@ $(TARG): $(OBJ)
 .PHONY: clean
 clean:
 	rm $(TARG) $(OBJ)
+
+.PHONY: cleanall
+cleanall: clean
+	rm -rf output output.mp3

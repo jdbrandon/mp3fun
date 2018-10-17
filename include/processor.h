@@ -5,5 +5,6 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-void process_raw(frame_header_t frame, char* raw, size_t size);
+void process_raw(frame_header_t frame, unsigned short crc, char* raw, size_t size);
+void close_output();
 #endif //PROCESSOR_HFILE
