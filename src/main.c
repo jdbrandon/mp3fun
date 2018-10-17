@@ -24,20 +24,8 @@ int seek_to_sync(FILE* f){
                 bytes_read += (-read + i);
                 return bytes_read;
             }
-            if((h.sync & 0x00f) < 0x00f){
-                //next step and the one after won't pass either
-                i += 2; //factors in increment of for loop
-                continue;
-            }
-            if((h.sync & 0x0f0) < 0x0f0){
-                //next step won't pass
-                i++; //factors in increment of for loop
-            }
         }//end for
 
-        //test this with chosen input
-        //make sure we don't miss a header that spans
-        //buffer boundary
         diff = buf_size - i;
         if(diff){
             fseek(f, -diff, SEEK_CUR);
@@ -53,15 +41,6 @@ int seek_to_sync(FILE* f){
             fseek(f, -read + i, SEEK_CUR);
             bytes_read += (-read + i);
             return bytes_read;
-        }
-        if((h.sync & 0x00f) < 0x00f){
-            //next step and the one after won't pass either
-            i += 3;
-            continue;
-        }
-        if((h.sync & 0x0f0) < 0x0f0){
-            //next step won't pass
-            i++; //factors in increment of loop
         }
         i++; 
     }//end while
