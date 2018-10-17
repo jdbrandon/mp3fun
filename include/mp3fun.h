@@ -13,6 +13,7 @@
 #define ERR_BAD_FREQ            (-3)
 #define ERR_NO_HEADER           (-4)
 #define ERR_SHORT_READ          (-5)
+#define ERR_BAD_HEADER          (-6)
 
 #define SYNC_VAL 0x7ff
 

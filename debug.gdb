@@ -1,2 +1,2 @@
-b seek_to_sync
-run -i output/frame7.mp3
+b calculate_frame_size
+run -i data/auto-repeater.mp3

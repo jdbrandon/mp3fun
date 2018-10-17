@@ -377,6 +377,56 @@ char* get_emphasis_string(unsigned emph){
     return res;
 }
 
+unsigned short get_samples_per_frame(unsigned version, unsigned layer){
+    unsigned short res;
+    if(version == MPEG1){
+        switch(layer){
+        case LAYER_I:
+            res = 381;
+            break;
+        case LAYER_II:
+        case LAYER_III:
+            res = 1152;
+            break;
+        default:
+            res = ERR_BAD_LAYER;
+        }
+    } else if((version == MPEG2) || (version == MPEG2_5)){
+        switch(layer){
+        case LAYER_I:
+            res = 384;
+            break;
+        case LAYER_II:
+            res = 1152;
+            break;
+        case LAYER_III:
+            res = 576;
+            break;
+        default:
+            res = ERR_BAD_LAYER;
+        }
+    } else {
+        res = ERR_BAD_MPEG_VERSION;
+    }
+    return res;
+}
+
+int get_slot_size(unsigned layer){
+    int res;
+    switch(layer){
+    case LAYER_I:
+        res = 4;
+        break;
+    case LAYER_II:
+    case LAYER_III:
+        res = 1;
+        break;
+    default:
+        res = ERR_BAD_LAYER;
+    }
+    return res;
+}
+
 size_t calculate_frame_size(frame_header_t frame){
 
     unsigned frequency = get_sample_frequency(frame.mpeg_version,
@@ -384,14 +434,18 @@ size_t calculate_frame_size(frame_header_t frame){
     unsigned bitrate = get_bitrate(frame.mpeg_version,
                                             frame.layer,
                                             frame.bitrate);
+    bitrate *= 1000;
+    unsigned short samples = get_samples_per_frame(frame.mpeg_version, frame.layer);
 
-    size_t res = (size_t)(144000 * ((float)bitrate / frequency));
-    if(frame.mpeg_version == MPEG2_5)
-        res >>= 1; //low bitrate mode
-    size_t padding = (frame.layer == LAYER_I) ? PADDING_LAYER_I :
-                                                PADDING_LAYER_II; //same as layer 3
-            
-    if(frame.is_padded)
-        res += padding;
-    return res;
+    int slot = get_slot_size(frame.layer);
+    if(slot < 0){
+        error("bad layer when calulating frame size, how did we get this far?\n");
+        return ERR_BAD_HEADER;
+    }
+    //Ref: https://hydrogenaud.io/index.php/topic,85125.0.html
+    float bps = ((float)samples)/8.0;
+    float size = bps * ((float)bitrate);
+    size /= ((float)frequency);
+    size += (frame.is_padded? slot : 0);
+    return (size_t) size;
 }

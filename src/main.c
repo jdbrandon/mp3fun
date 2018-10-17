@@ -224,6 +224,7 @@ int main(int argc, char** argv){
         }
 
         frame_size = calculate_frame_size(frame_ref);
+        frame_size -= sizeof(frame_header_t); //offset what we've already read
 
         if(frame_size == 0 && frame_ref.bitrate == BITRATE_FREE){
             //NOTE: normally we need to use get_bitrate() but 
