@@ -427,6 +427,10 @@ int get_slot_size(unsigned layer){
     return res;
 }
 
+/*
+Frame should be validated before this function is 
+ever called so we skip validity checks on frame here
+*/
 size_t calculate_frame_size(frame_header_t frame){
 
     unsigned frequency = get_sample_frequency(frame.mpeg_version,
@@ -438,10 +442,7 @@ size_t calculate_frame_size(frame_header_t frame){
     unsigned short samples = get_samples_per_frame(frame.mpeg_version, frame.layer);
 
     int slot = get_slot_size(frame.layer);
-    if(slot < 0){
-        error("bad layer when calulating frame size, how did we get this far?\n");
-        return ERR_BAD_HEADER;
-    }
+
     //Ref: https://hydrogenaud.io/index.php/topic,85125.0.html
     float bps = ((float)samples)/8.0;
     float size = bps * ((float)bitrate);

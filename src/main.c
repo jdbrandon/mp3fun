@@ -20,8 +20,8 @@ int seek_to_sync(FILE* f){
             read_header_bytes(buf, i, &h);
             if(h.sync == SYNC_VAL){
                 //found!! sync seek back f to i    
-                fseek(f, -buf_size + i, SEEK_CUR);
-                bytes_read += (-buf_size + i);
+                fseek(f, -read + i, SEEK_CUR);
+                bytes_read += (-read + i);
                 return bytes_read;
             }
             if((h.sync & 0x00f) < 0x00f){
@@ -29,7 +29,7 @@ int seek_to_sync(FILE* f){
                 i += 2; //factors in increment of for loop
                 continue;
             }
-            if((h.sync & 0x070) < 0x070){
+            if((h.sync & 0x0f0) < 0x0f0){
                 //next step won't pass
                 i++; //factors in increment of for loop
             }
@@ -59,7 +59,7 @@ int seek_to_sync(FILE* f){
             i += 3;
             continue;
         }
-        if((h.sync & 0x070) < 0x070){
+        if((h.sync & 0x0f0) < 0x0f0){
             //next step won't pass
             i++; //factors in increment of loop
         }
