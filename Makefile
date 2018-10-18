@@ -21,4 +21,4 @@ clean:
 
 .PHONY: cleanall
 cleanall: clean
-	rm -rf output output.mp3
+	rm -rf output output.mp3 debug
