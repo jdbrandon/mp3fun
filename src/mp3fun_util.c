@@ -1,6 +1,5 @@
 #include <mp3fun.h>
 #include <mp3fun_util.h>
-#include <libmpeg123/mpeghead.h>
 
 const unsigned char bitrate_table[BR_TABLE_ROW][BR_TABLE_COL] = {
     {    BRFR,     BRFR,     BRFR,     BRFR,     BRFR},
@@ -62,67 +61,8 @@ void write_header_bytes(frame_header_t frame, char* buf){
     }
 }
 
-bool test_equal(frame_header_t f, unsigned long h){
-    int res = true;
-    if(f.sync != HDR_SYNC_VAL(h)){
-        error("sync does not match\n");    
-        error("0x%.3x\t0x%.3x\n", f.sync, HDR_SYNC_VAL(h));
-        res = false;
-    }
-    if(f.mpeg_version != HDR_VERSION_VAL(h)){
-        error("version does not match\n");
-        res = false;
-    }
-    if(f.layer != HDR_LAYER_VAL(h)){
-        error("layer does not match\n");
-        res = false;
-    }
-    if(f.crc_disabled != HDR_CRC_VAL(h)){
-        error("crc bit does not match\n");
-        res = false;
-    }
-    if(f.bitrate != HDR_BITRATE_VAL(h)){
-        error("bitrate index does not match\n");
-        res = false;
-    }
-    if(f.sample_frequency != HDR_SAMPLERATE_VAL(h)){
-        error("sample frequency does not match\n");
-        res = false;
-    }
-    if(f.is_padded != HDR_PADDING_VAL(h)){
-        error("padding enable bit does not mathc\n");
-        res = false;
-    }
-    if(f.private != HDR_PRIVATE_VAL(h)){
-        error("private bit doesn not match\n");
-        res = false;
-    }
-    if(f.channel_mode != HDR_CHANNEL_VAL(h)){
-        error("channel mode does not match\n");
-        res = false;
-    }
-    if(f.mode_ext != HDR_CHANEX_VAL(h)){
-        error("channel extension does not match\n");
-        res = false;
-    }
-    if(f.has_copyright != HDR_COPYRIGHT_VAL(h)){
-        error("copyright bit does not match\n");
-        res = false;
-    }
-    if(f.is_original != HDR_ORIGINAL_VAL(h)){
-        error("original bit does not match\n");
-        res = false;
-    }
-    if(f.emphasis != HDR_EMPHASIS_VAL(h)){
-        error("emphasis does not match\n");
-        res = false;
-    }
-    return res;
-}
-
 int is_frame_valid(const frame_header_t frame){
     bool res;
-    res = test_equal(frame, *((long *) &frame));
     if(!res){
         error("my parse != libmpeg123");
         return false;
