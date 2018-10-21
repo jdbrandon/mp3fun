@@ -1,5 +1,6 @@
 FROM alpine
 ADD ./src /src
+ADD ./test /test
 ADD ./include /include
 ADD ./Makefile ./
 WORKDIR ./
