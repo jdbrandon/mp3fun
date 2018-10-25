@@ -70,7 +70,7 @@ int seek_to_valid_sync(FILE* f, frame_header_t* out_frame){
     return ERR_NO_HEADER;
 }
 
-void dump_frame_header_to_file(const frame_header_t h, FILE* out){
+void output_frame_header_to_file(const frame_header_t h, FILE* out){
     fprintf(out,"========= Begin Header ========\n");
     if(verbose >= 2)
         fprintf(out, "%s:\t\t\t0x%.3x\n", "sync", h.sync);
@@ -102,8 +102,8 @@ void dump_frame_header_to_file(const frame_header_t h, FILE* out){
     fprintf(out,"========= End Header ==========\n");
 }
 
-void dump_frame_header(const frame_header_t h){
-    dump_frame_header_to_file(h, outFile);    
+void output_frame_header(const frame_header_t h){
+    output_frame_header_to_file(h, outFile);
 }
 
 long get_bytes_to_EOF(FILE* f){
@@ -146,6 +146,12 @@ int main(int argc, char** argv){
         case 'v':
             verbose++;
             break;
+        case 'R':
+            dump_raw = true;
+            break;
+        case 'F':
+            dump_frames = true;
+            break;
         default:
             error("invalid option -%c\n", (char) option);
             print_usage();
@@ -155,6 +161,12 @@ int main(int argc, char** argv){
 
     if(file_name[0] == '\0'){
         error("Error: no input file specified. Specify with -i\n");
+        return -1;
+    }
+
+    if( !(dump_raw || dump_frames) ){
+        error("-R or -F must be specified on the command line\n");
+        print_usage();
         return -1;
     }
 
@@ -188,14 +200,14 @@ int main(int argc, char** argv){
     //main loop
     while((offset = seek_to_valid_sync(f, &frame_ref)) >= 0){
         if(verbose > 0)
-            dump_frame_header(frame_ref);
+            output_frame_header(frame_ref);
 
         crc = 0;
         if( !frame_ref.crc_disabled ){
             read = fread(&crc, 1, sizeof(short), f);
             if(read < sizeof(short)){
                 error("Error: short read on crc\n");
-                dump_frame_header_to_file(frame_ref, errFile);
+                output_frame_header_to_file(frame_ref, errFile);
                 break;
             }
             if(verbose > 0)
@@ -228,7 +240,7 @@ int main(int argc, char** argv){
 
         if(read < frame_size){
             error("Error: short read on frame\n");
-            dump_frame_header_to_file(frame_ref, errFile);
+            output_frame_header_to_file(frame_ref, errFile);
             free(frame_buf);
             break;
         }
@@ -237,6 +249,7 @@ int main(int argc, char** argv){
 
         free(frame_buf);
     }
+
     if(offset == ERR_SHORT_READ)
         error("Short read while seeking header\n");
     

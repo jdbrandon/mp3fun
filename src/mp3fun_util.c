@@ -23,6 +23,8 @@ const unsigned char bitrate_table[BR_TABLE_ROW][BR_TABLE_COL] = {
 unsigned verbose = 0;
 FILE* outFile = NULL;
 FILE* errFile = NULL;
+bool dump_raw = false;
+bool dump_frames = false;
 
 void error(char* fmt, ...){
     va_list args;
@@ -44,7 +46,11 @@ void output(char* fmt, ...){
 
 void print_usage(){
     printf("mp3fun usage:\n\t");
-    printf("./mp3fun [-v] -i input_file [-o output_file] [-e error_file]\n");
+    printf("./mp3fun [-v] -i input_file -[R|F] [-o output_file] [-e error_file]\n");
+    printf("\t-R: will dump a trimmed mp3 to output.mp3\n");
+    printf("\t-F: will dump each frame individually to \"output\" directory\n");
+    printf("\tBoth -R and -F may be specified\n");
+    printf("\nTip: make cleanall wil delete \"output\" directory and output.mp3\n");
 }
 
 void read_header_bytes(char* buf, int i, frame_header_t* frame){

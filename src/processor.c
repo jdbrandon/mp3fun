@@ -1,4 +1,5 @@
 #include <processor.h>
+
 FILE* processed = NULL;
 size_t count = 1;
 
@@ -69,8 +70,10 @@ void append_to_output(frame_header_t frame, unsigned short crc, char* raw, size_
 }
 
 void process_raw(frame_header_t frame, unsigned short crc, char* raw, size_t size){
-    dump_frame(frame, crc, raw, size);
-    append_to_output(frame, crc, raw, size);
+    if(dump_frames)
+        dump_frame(frame, crc, raw, size);
+    if(dump_raw)
+        append_to_output(frame, crc, raw, size);
 }
 
 void close_output(){
