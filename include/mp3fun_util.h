@@ -7,6 +7,8 @@
 extern unsigned verbose;
 extern FILE* outFile;
 extern FILE* errFile;
+extern bool dump_raw;
+extern bool dump_frames;
 
 void error(char* fmt, ...);
 void output(char* fmt, ...);
