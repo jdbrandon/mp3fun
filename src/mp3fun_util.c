@@ -63,10 +63,6 @@ void write_header_bytes(frame_header_t frame, char* buf){
 
 int is_frame_valid(const frame_header_t frame){
     bool res;
-    if(!res){
-        error("my parse != libmpeg123");
-        return false;
-    }
 
     unsigned version = frame.mpeg_version;
     if(version == MPEG_RESERVED || version == MPEG2_5)
